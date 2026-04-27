@@ -1,0 +1,667 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ meta_title }}</title>
+  <meta name="description" content="{{ meta_description }}">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://benchmarkself.dev{{ canonical_url }}">
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="{{ meta_title }}">
+  <meta property="og:description" content="{{ meta_description }}">
+  <meta property="og:url" content="https://benchmarkself.dev{{ canonical_url }}">
+  <meta property="og:type" content="website">
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+
+  <!-- AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-XXXXXXXXXXXXXXXX" crossorigin="anonymous"></script>
+
+  <style>
+    :root {
+      --bg: #ffffff;
+      --surface: #ffffff;
+      --surface2: #f7f8fb;
+      --border: #e5e7eb;
+      --accent: #2563eb;
+      --accent2: #1d4ed8;
+      --text: #111827;
+      --muted: #6b7280;
+      --green: #16a34a;
+      --yellow: #ca8a04;
+      --red: #dc2626;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      line-height: 1.6;
+    }
+
+    .nav {
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--surface);
+    }
+
+    .nav-brand {
+      font-family: 'Syne', sans-serif;
+      font-weight: 800;
+      font-size: 1.2rem;
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    .nav-links a {
+      color: var(--muted);
+      text-decoration: none;
+      margin-left: 20px;
+      font-size: 0.85rem;
+    }
+
+    .nav-links a:hover { color: var(--text); }
+
+    /* Ad Unit 1 */
+    .ad-leaderboard {
+      display: flex;
+      justify-content: center;
+      padding: 12px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .hero {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 48px 24px 0;
+    }
+
+    .breadcrumb {
+      font-size: 0.78rem;
+      color: var(--muted);
+      margin-bottom: 20px;
+    }
+
+    .breadcrumb a { color: var(--muted); text-decoration: none; }
+    .breadcrumb a:hover { color: var(--accent); }
+    .breadcrumb span { margin: 0 6px; }
+
+    h1 {
+      font-family: 'Syne', sans-serif;
+      font-size: clamp(1.6rem, 4vw, 2.4rem);
+      font-weight: 800;
+      line-height: 1.2;
+      margin-bottom: 12px;
+      color: #fff;
+    }
+
+    h1 em {
+      color: var(--accent);
+      font-style: normal;
+    }
+
+    .subtitle {
+      color: var(--muted);
+      font-size: 1rem;
+      margin-bottom: 36px;
+    }
+
+    /* Calculator */
+    .calculator {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 28px;
+      margin-bottom: 28px;
+    }
+
+    .calc-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+
+    @media (max-width: 600px) {
+      .calc-grid { grid-template-columns: 1fr; }
+    }
+
+    .field label {
+      display: block;
+      font-size: 0.78rem;
+      font-weight: 500;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 8px;
+    }
+
+    .field input,
+    .field select {
+      width: 100%;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 14px;
+      color: var(--text);
+      font-size: 1rem;
+      font-family: 'DM Sans', sans-serif;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .field input:focus,
+    .field select:focus {
+      border-color: var(--accent);
+    }
+
+    .field select option { background: var(--surface2); }
+
+    .calc-btn {
+      width: 100%;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 13px;
+      font-size: 1rem;
+      font-weight: 600;
+      font-family: 'Syne', sans-serif;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+
+    .calc-btn:hover { opacity: 0.88; }
+
+    /* Result */
+    .result-block {
+      background: var(--surface2);
+      border: 1px solid var(--accent);
+      border-radius: 16px;
+      padding: 28px;
+      margin-bottom: 28px;
+      display: none;
+    }
+
+    .result-block.visible { display: block; }
+
+    .percentile-number {
+      font-family: 'Syne', sans-serif;
+      font-size: clamp(3rem, 10vw, 5rem);
+      font-weight: 800;
+      line-height: 1;
+      color: var(--accent);
+      margin-bottom: 4px;
+    }
+
+    .percentile-label {
+      font-size: 1.1rem;
+      color: var(--text);
+      margin-bottom: 16px;
+    }
+
+    .result-sentence {
+      font-size: 1.05rem;
+      color: var(--text);
+      line-height: 1.65;
+      padding: 16px;
+      background: var(--surface);
+      border-radius: 10px;
+      border-left: 3px solid var(--accent);
+    }
+
+    /* Distribution bar */
+    .dist-chart {
+      margin: 24px 0;
+    }
+
+    .dist-title {
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin-bottom: 12px;
+      font-weight: 600;
+    }
+
+    .dist-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 8px;
+      font-size: 0.82rem;
+    }
+
+    .dist-label { color: var(--muted); width: 52px; text-align: right; flex-shrink: 0; }
+    .dist-bar-wrap { flex: 1; background: var(--surface); border-radius: 4px; height: 8px; }
+    .dist-bar { height: 8px; border-radius: 4px; background: var(--border); transition: width 0.6s ease; }
+    .dist-bar.active { background: var(--accent); }
+    .dist-value { color: var(--text); width: 72px; font-weight: 500; }
+
+    /* Ad Unit 2 */
+    .ad-inline {
+      display: flex;
+      justify-content: center;
+      margin: 24px 0;
+    }
+
+    /* Context block */
+    .context-block {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 24px;
+    }
+
+    .context-block h2 {
+      font-family: 'Syne', sans-serif;
+      font-size: 1.15rem;
+      font-weight: 700;
+      margin-bottom: 12px;
+      color: #fff;
+    }
+
+    .context-block p {
+      color: var(--muted);
+      font-size: 0.92rem;
+      line-height: 1.7;
+      margin-bottom: 10px;
+    }
+
+    .stat-row {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin: 16px 0;
+    }
+
+    .stat-pill {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 16px;
+      font-size: 0.85rem;
+    }
+
+    .stat-pill strong {
+      display: block;
+      font-family: 'Syne', sans-serif;
+      font-size: 1.1rem;
+      color: var(--accent);
+      font-weight: 700;
+    }
+
+    /* Next steps */
+    .next-steps {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 24px;
+    }
+
+    .next-steps h2 {
+      font-family: 'Syne', sans-serif;
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 16px;
+    }
+
+    .next-link {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 14px;
+      border-radius: 8px;
+      text-decoration: none;
+      color: var(--text);
+      border: 1px solid var(--border);
+      margin-bottom: 8px;
+      transition: border-color 0.2s, background 0.2s;
+      font-size: 0.92rem;
+    }
+
+    .next-link:hover {
+      border-color: var(--accent);
+      background: var(--surface2);
+    }
+
+    .next-link .arrow {
+      margin-left: auto;
+      color: var(--accent);
+      font-size: 1.1rem;
+    }
+
+    .next-link .icon { font-size: 1.2rem; }
+
+    /* Related pages */
+    .related-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: 10px;
+      margin-bottom: 32px;
+    }
+
+    .related-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 16px;
+      text-decoration: none;
+      color: var(--text);
+      font-size: 0.85rem;
+      transition: border-color 0.2s;
+    }
+
+    .related-card:hover { border-color: var(--accent); }
+
+    .related-card strong {
+      display: block;
+      font-size: 0.78rem;
+      color: var(--muted);
+      margin-bottom: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 24px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.78rem;
+      line-height: 1.8;
+    }
+
+    footer a { color: var(--muted); }
+  </style>
+</head>
+<body>
+
+<nav class="nav">
+  <a href="/" class="nav-brand">BenchmarkSelf</a>
+  <div class="nav-links">
+    <a href="/salary-percentile/">Salary</a>
+    <a href="/savings-percentile/">Savings</a>
+    <a href="/net-worth-percentile/">Net Worth</a>
+    <a href="/401k-percentile/">401k</a>
+  </div>
+</nav>
+
+<!-- Ad Unit 1: Leaderboard (728×90) -->
+<div class="ad-leaderboard">
+  <ins class="adsbygoogle"
+       style="display:inline-block;width:728px;height:90px"
+       data-ad-client="ca-pub-XXXXXXXXXXXXXXXX"
+       data-ad-slot="1111111111"></ins>
+  <script>(adsbygoogle = window.adsbygoogle || []).push({});</script>
+</div>
+
+<div class="hero">
+
+  <div class="breadcrumb">
+    <a href="/">Home</a><span>›</span>
+    <a href="/salary-percentile/">Salary Percentile</a><span>›</span>
+    {% if state_name %}<a href="/salary-percentile/age/{{ age_band_id }}/state/{{ state_id }}/">{{ state_name }}</a><span>›</span>{% endif %}
+    {{ bucket_label }} · Age {{ age_band_label }}
+  </div>
+
+  <h1>Salary Percentile: <em>{{ bucket_label }}</em><br>Age {{ age_band_label }}{% if state_name %} in {{ state_name }}{% endif %}</h1>
+  <p class="subtitle">See exactly where you rank — no signup, no email required.</p>
+
+  <!-- Calculator -->
+  <div class="calculator">
+    <div class="calc-grid">
+      <div class="field">
+        <label>Your Annual Salary</label>
+        <input type="number" id="salary-input" placeholder="e.g. 72000" value="{{ bucket_mid }}">
+      </div>
+      <div class="field">
+        <label>Your Age</label>
+        <select id="age-input">
+          {% for band in age_bands %}
+          <option value="{{ band.id }}" {% if band.id == age_band_id %}selected{% endif %}>{{ band.label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label>Your State</label>
+        <select id="state-input">
+          <option value="national" {% if not state_id %}selected{% endif %}>All States (National)</option>
+          {% for s in states %}
+          <option value="{{ s.id }}" {% if s.id == state_id %}selected{% endif %}>{{ s.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <button class="calc-btn" onclick="calculate()">Calculate My Percentile →</button>
+  </div>
+
+  <!-- Result Block -->
+  <div class="result-block" id="result-block">
+    <div class="percentile-number" id="percentile-display">—</div>
+    <div class="percentile-label">Percentile</div>
+    <div class="result-sentence" id="result-sentence"></div>
+
+    <div class="dist-chart" id="dist-chart"></div>
+  </div>
+
+  <!-- Ad Unit 2: In-content (336×280) — highest RPM placement -->
+  <div class="ad-inline">
+    <ins class="adsbygoogle"
+         style="display:block;width:336px;height:280px"
+         data-ad-client="ca-pub-XXXXXXXXXXXXXXXX"
+         data-ad-slot="2222222222"></ins>
+    <script>(adsbygoogle = window.adsbygoogle || []).push({});</script>
+  </div>
+
+  <!-- Context Block -->
+  <div class="context-block">
+    <h2>Salary Distribution: Age {{ age_band_label }}{% if state_name %} · {{ state_name }}{% endif %}</h2>
+
+    <div class="stat-row">
+      <div class="stat-pill">
+        <strong>${{ "{:,}".format(data.p50) }}</strong>
+        Median Salary
+      </div>
+      <div class="stat-pill">
+        <strong>${{ "{:,}".format(data.p25) }}</strong>
+        Bottom 25%
+      </div>
+      <div class="stat-pill">
+        <strong>${{ "{:,}".format(data.p75) }}</strong>
+        Top 25%
+      </div>
+      <div class="stat-pill">
+        <strong>${{ "{:,}".format(data.p90) }}</strong>
+        Top 10%
+      </div>
+    </div>
+
+    <p>
+      For people aged {{ age_band_label }}{% if state_name %} in {{ state_name }}{% endif %},
+      the median annual salary is <strong>${{ "{:,}".format(data.p50) }}</strong>.
+      Half of workers in this group earn between
+      <strong>${{ "{:,}".format(data.p25) }}</strong> and
+      <strong>${{ "{:,}".format(data.p75) }}</strong> per year.
+      The top 10% of earners in this group make above
+      <strong>${{ "{:,}".format(data.p90) }}</strong>.
+    </p>
+
+    <p>
+      These estimates are derived from BLS Occupational Employment Statistics
+      and Census ACS public data. Individual salaries vary by occupation, education,
+      and employer. Use these figures as a benchmark, not a guarantee.
+    </p>
+
+    {% if state_name %}
+    <p>
+      {{ state_name }} has a cost-of-living index of approximately
+      <strong>{{ "%.2f"|format(cost_index) }}x</strong> the national average.
+      A salary that ranks at the 60th percentile nationally may feel
+      {% if cost_index > 1.1 %}tighter{% else %}more comfortable{% endif %}
+      in {{ state_name }} compared to lower cost-of-living states.
+    </p>
+    {% endif %}
+  </div>
+
+  <!-- Next Steps: Internal Loop -->
+  <div class="next-steps">
+    <h2>Check Your Full Financial Picture</h2>
+
+    <a href="/savings-percentile/age/{{ age_band_id }}/" class="next-link">
+      <span class="icon">💰</span>
+      How do your savings compare at age {{ age_band_label }}?
+      <span class="arrow">→</span>
+    </a>
+
+    <a href="/net-worth-percentile/age/{{ age_band_id }}/" class="next-link">
+      <span class="icon">📊</span>
+      Check your net worth percentile for age {{ age_band_label }}
+      <span class="arrow">→</span>
+    </a>
+
+    <a href="/401k-percentile/age/{{ age_band_id }}/" class="next-link">
+      <span class="icon">🏦</span>
+      Is your 401k on track for your age?
+      <span class="arrow">→</span>
+    </a>
+
+    <a href="/emergency-fund-calculator/" class="next-link">
+      <span class="icon">🛡️</span>
+      How many months can you survive without income?
+      <span class="arrow">→</span>
+    </a>
+
+    {% if state_name %}
+    <a href="/salary-percentile/{{ bucket_id }}/age/{{ age_band_id }}/" class="next-link">
+      <span class="icon">🇺🇸</span>
+      See national ranking for {{ bucket_label }} at age {{ age_band_label }}
+      <span class="arrow">→</span>
+    </a>
+    {% else %}
+    <a href="/cost-of-living-salary/{{ bucket_id }}/" class="next-link">
+      <span class="icon">🗺️</span>
+      How far does {{ bucket_label }} go in different states?
+      <span class="arrow">→</span>
+    </a>
+    {% endif %}
+  </div>
+
+  <!-- Related Pages -->
+  <h2 style="font-family:'Syne',sans-serif;font-size:1rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:14px;">Related Benchmarks</h2>
+  <div class="related-grid">
+    {% for link in related_pages %}
+    <a href="{{ link.url }}" class="related-card">
+      <strong>{{ link.type }}</strong>
+      {{ link.label }}
+    </a>
+    {% endfor %}
+  </div>
+
+</div><!-- /hero -->
+
+<footer>
+  <p>Data sourced from BLS OES 2023, Census ACS 2023, Federal Reserve SCF 2022.</p>
+  <p>Estimates derived from aggregated public datasets. For informational use only.</p>
+  <p style="margin-top:8px;">
+    <a href="/about/">About</a> · <a href="/privacy/">Privacy</a> · <a href="/methodology/">Methodology</a>
+  </p>
+</footer>
+
+<!-- Embedded percentile data for JS calculator -->
+<script>
+const SALARY_DATA = {{ salary_data_json }};
+
+function getPercentile(salary, ageBand, stateId) {
+  const key = stateId !== 'national' && SALARY_DATA[stateId] && SALARY_DATA[stateId][ageBand]
+    ? stateId : 'national';
+  const d = SALARY_DATA[key][ageBand];
+  if (!d) return null;
+
+  const pts = [
+    [0, 0], [d.p10, 10], [d.p25, 25],
+    [d.p50, 50], [d.p75, 75], [d.p90, 90], [d.p90 * 2, 99]
+  ];
+
+  for (let i = 1; i < pts.length; i++) {
+    if (salary <= pts[i][0]) {
+      const [x0, y0] = pts[i-1];
+      const [x1, y1] = pts[i];
+      return Math.round(y0 + (salary - x0) / (x1 - x0) * (y1 - y0));
+    }
+  }
+  return 99;
+}
+
+function formatK(n) {
+  return n >= 1000 ? '$' + (n/1000).toFixed(0) + 'K' : '$' + n;
+}
+
+function calculate() {
+  const salary = parseInt(document.getElementById('salary-input').value) || 0;
+  const age = document.getElementById('age-input').value;
+  const state = document.getElementById('state-input').value;
+
+  const pct = getPercentile(salary, age, state);
+  if (!pct) return;
+
+  const key = state !== 'national' && SALARY_DATA[state] && SALARY_DATA[state][age] ? state : 'national';
+  const d = SALARY_DATA[key][age];
+
+  document.getElementById('percentile-display').textContent = pct + 'th';
+  document.getElementById('result-sentence').innerHTML =
+    `You earn more than <strong>${pct}%</strong> of people in your age group` +
+    (state !== 'national' ? ` in your state` : '') +
+    `. Most people like you earn between <strong>${formatK(d.p25)}</strong> and <strong>${formatK(d.p75)}</strong>.`;
+
+  // Distribution chart
+  const bands = [
+    {label: 'Top 10%', val: d.p90, width: 100},
+    {label: 'Top 25%', val: d.p75, width: 75},
+    {label: 'Median',  val: d.p50, width: 50},
+    {label: 'Bot 25%', val: d.p25, width: 25},
+    {label: 'Bot 10%', val: d.p10, width: 10}
+  ];
+
+  let html = '<div class="dist-title">Salary Distribution for Your Group</div>';
+  bands.forEach(b => {
+    const isActive = salary >= b.val;
+    html += `<div class="dist-row">
+      <div class="dist-label">${b.label}</div>
+      <div class="dist-bar-wrap"><div class="dist-bar ${isActive ? 'active' : ''}" style="width:${b.width}%"></div></div>
+      <div class="dist-value">${formatK(b.val)}</div>
+    </div>`;
+  });
+
+  document.getElementById('dist-chart').innerHTML = html;
+  document.getElementById('result-block').classList.add('visible');
+
+  // Update URL without reload (for indexable result pages via pre-rendering)
+  const newUrl = `/salary-percentile/${Math.floor(salary/1000)*1000}-${Math.ceil(salary/1000)*1000+1}/age/${age}/${state !== 'national' ? 'state/' + state + '/' : ''}`;
+  window.history.replaceState({}, '', newUrl);
+}
+
+// Auto-calculate on load if pre-filled
+window.addEventListener('DOMContentLoaded', function() {
+  if (document.getElementById('salary-input').value) calculate();
+});
+</script>
+
+</body>
+</html>
