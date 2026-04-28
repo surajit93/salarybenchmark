@@ -5,13 +5,15 @@ Reads data/master.json + data/config.json and renders static pages from template
 """
 
 import json
+import logging
+import hashlib
 import re
 import shutil
 import sys
 from datetime import datetime
 from pathlib import Path
 
-from jinja2 import Environment, FileSystemLoader, StrictUndefined
+from jinja2 import Environment, FileSystemLoader, StrictUndefined, UndefinedError
 
 # ── Paths ──────────────────────────────────────────────────────────────────
 ROOT = Path(__file__).parent.parent
@@ -26,7 +28,14 @@ REQUIRED_DATA_FIELDS = ("p10", "p25", "p50", "p75", "p90")
 DEFAULT_CONFIG_VALUES = {
     "dataset_last_updated": "2023-12-31",
     "homepage_intro": "Compare your salary, savings, and net worth anonymously.",
+    "build": {
+        "max_pages": 50,
+        "state_subset_size": None,
+    },
 }
+
+logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+LOGGER = logging.getLogger("page_generator")
 
 
 def load_json_file(path: Path, label: str):
@@ -40,6 +49,15 @@ def load_json_file(path: Path, label: str):
 
 def normalize_domain(domain: str) -> str:
     return (domain or "").rstrip("/")
+
+
+def validate_domain(domain: str) -> str:
+    normalized = normalize_domain(domain)
+    if not normalized:
+        raise ValueError("config.domain is required")
+    if not re.match(r"^https?://[a-z0-9.-]+(?::\d+)?$", normalized, re.IGNORECASE):
+        raise ValueError(f"Invalid config.domain format: {domain!r}")
+    return normalized
 
 
 def normalize_canonical(path: str) -> str:
@@ -91,11 +109,24 @@ def percentile_range_label(bucket_mid: int, data: dict) -> str:
 
 
 def unique_intro(bucket_mid: int) -> str:
+    return "Use this salary benchmark to compare where this income level lands for your current profile."
+
+
+def unique_intro_for_context(bucket: dict, age_band: dict, state_name: str | None) -> str:
+    bucket_mid = bucket["mid"]
+    age_label = age_band["label"]
+    state_fragment = f" in {state_name}" if state_name else " nationally"
+    if bucket_mid < 50000 and age_band["id"] in ("22-25", "26-30"):
+        return f"Early-career earners at {bucket['label']}{state_fragment} can use this page to set realistic income milestones for {age_label}."
     if bucket_mid < 50000:
-        return "This benchmark helps you see how this income level compares for your age group."
+        return f"This view shows how a {bucket['label']} salary compares for people in {age_label}{state_fragment}, including how close it is to the group median."
+    if bucket_mid < 90000 and age_band["id"] in ("31-35", "36-40", "41-45"):
+        return f"For mid-career professionals in {age_label}{state_fragment}, this benchmark highlights whether {bucket['label']} lands below, near, or above typical earnings."
     if bucket_mid < 90000:
-        return "Use this comparison to check whether your current income is above or below your peers."
-    return "Higher earners can use this page to benchmark progress against similar professionals."
+        return f"Use this comparison to evaluate how a {bucket['label']} income ranks for {age_label}{state_fragment} and what range nearby earners typically make."
+    if state_name:
+        return f"Higher-income households earning around {bucket['label']} in {state_name} can use this page to benchmark percentile rank while accounting for regional salary patterns."
+    return f"Higher earners in {age_label} can use this benchmark to track whether {bucket['label']} is keeping pace with national top-quartile and top-decile salaries."
 
 
 def build_related_pages(buckets: list, age_bands: list, states: list, bucket: dict, age_band: dict, state_id=None):
@@ -207,10 +238,61 @@ def build_crawl_entry_pages(buckets: list, age_bands: list, states: list):
     bucket_links = "".join(
         f"<li><a href='/salary-percentile/{b['id']}/age/31-35/'>{b['label']} benchmark</a></li>" for b in buckets
     )
+    by_age_intro = (
+        "<h1>Salary by Age</h1>"
+        "<p>Salary growth is rarely linear, and age-based benchmarks help explain why. "
+        "At earlier stages, income ranges are tighter and movement between percentiles can happen quickly. "
+        "By the mid-30s and 40s, the spread between the median and top quartile becomes much wider. "
+        "These pages let you compare your current salary with typical earnings for the same age band, "
+        "then jump directly into percentile views for practical context. "
+        "Use these age pages to identify whether your pay is near the median, ahead of peers, or lagging, "
+        "and to set the next realistic target salary range for your career stage.</p>"
+        "<p>Prefer browsing by location? Explore <a href='/salary-by-state/'>salary by state</a> to compare regional differences.</p>"
+    )
+    by_state_intro = (
+        "<h1>Salary by State</h1>"
+        "<p>Location has a major impact on salary benchmarks. Two people with similar roles and experience can sit in very different "
+        "percentiles depending on local labor markets and cost-of-living pressure. These state entry pages help you compare earnings "
+        "for the same age and salary band across major states, then drill into a detailed percentile result page for each region. "
+        "If you are considering relocation or remote work, this is a practical way to evaluate pay competitiveness instead of relying "
+        "on one national number. You can also compare your state view against national data to decide whether your compensation is keeping pace.</p>"
+        "<p>Prefer browsing by life stage first? Start with <a href='/salary-by-age/'>salary by age</a> and then refine by state.</p>"
+    )
     return {
-        "/salary-by-age/": f"<h1>Salary by Age</h1><p>Browse salary percentile pages by age band.</p><ul>{age_links}</ul>",
-        "/salary-by-state/": f"<h1>Salary by State</h1><p>Browse state salary benchmark pages.</p><ul>{state_links}</ul>",
+        "/salary-by-age/": f"{by_age_intro}<ul>{age_links}</ul>",
+        "/salary-by-state/": f"{by_state_intro}<ul>{state_links}</ul>",
         "/best-salary-ranges/": f"<h1>Best Salary Ranges</h1><p>Explore salary ranges and where they rank.</p><ul>{bucket_links}</ul>",
+        "/is-75000-good-salary/": (
+            "<h1>Is $75,000 a Good Salary?</h1>"
+            "<p>A $75,000 salary typically sits around the upper-middle range for many working-age groups, but the exact percentile depends "
+            "on your age and state. Use this quick hub to jump into salary percentile pages closest to $75K and see whether that income is "
+            "near the median, top quartile, or top decile for your profile.</p>"
+            "<ul>"
+            "<li><a href='/salary-percentile/65k-80k/age/31-35/'>$65K–$80K at age 31–35 (national)</a></li>"
+            "<li><a href='/salary-percentile/65k-80k/age/36-40/'>$65K–$80K at age 36–40 (national)</a></li>"
+            "<li><a href='/salary-by-state/'>Compare by state</a></li>"
+            "</ul>"
+        ),
+        "/average-salary-age-30/": (
+            "<h1>Average Salary at Age 30</h1>"
+            "<p>Age 30 usually falls in the 26–30 salary band. This entry page helps you compare average and percentile benchmarks for this age range, "
+            "then branch into nearby age groups if you want a wider comparison. Use the pages below to check where your current income stands.</p>"
+            "<ul>"
+            "<li><a href='/salary-percentile/50k-65k/age/26-30/'>$50K–$65K at age 26–30</a></li>"
+            "<li><a href='/salary-percentile/65k-80k/age/26-30/'>$65K–$80K at age 26–30</a></li>"
+            "<li><a href='/salary-by-age/'>Browse all age-based salary pages</a></li>"
+            "</ul>"
+        ),
+        "/salary-percentile-calculator/": (
+            "<h1>Salary Percentile Calculator</h1>"
+            "<p>Use our salary percentile pages as a no-login calculator: pick the closest salary band, your age group, and optionally your state. "
+            "Each page includes an interactive percentile estimate plus distribution markers for median, quartiles, and top 10% thresholds.</p>"
+            "<ul>"
+            "<li><a href='/salary-percentile/65k-80k/age/31-35/'>Start with $65K–$80K at age 31–35</a></li>"
+            "<li><a href='/salary-by-age/'>Browse by age</a></li>"
+            "<li><a href='/salary-by-state/'>Browse by state</a></li>"
+            "</ul>"
+        ),
     }
 
 
@@ -234,7 +316,23 @@ def write_file(root: Path, canonical_or_file: str, content: str):
     (page_dir / "index.html").write_text(content, encoding="utf-8")
 
 
+def discover_existing_paths(output_root: Path) -> list[str]:
+    urls = set()
+    for file_path in output_root.rglob("*"):
+        if not file_path.is_file():
+            continue
+        rel = "/" + str(file_path.relative_to(output_root)).replace("\\", "/")
+        if rel in ("/index.html",):
+            urls.add("/")
+        elif rel.endswith("/index.html"):
+            urls.add(normalize_canonical(rel[: -len("index.html")]))
+        elif rel.endswith(".xml") or rel.endswith(".txt") or rel.endswith(".html"):
+            urls.add(rel)
+    return sorted(urls)
+
+
 def main():
+    dry_run = "--dry-run" in sys.argv
     data = load_json_file(DATA_FILE, "master.json")
     config = load_json_file(CONFIG_FILE, "config.json")
 
@@ -257,13 +355,20 @@ def main():
     env = Environment(loader=FileSystemLoader(str(TMPL_DIR)), undefined=StrictUndefined)
     template = env.get_template("salary.html")
     salary_data_json = build_salary_data_json(salary)
+    template_version = hashlib.sha256((TMPL_DIR / "salary.html").read_bytes()).hexdigest()[:12]
 
     phase1_buckets = ["50k-65k", "65k-80k", "80k-100k", "100k-130k", "40k-50k"]
     phase1_ages = ["26-30", "31-35", "36-40", "41-45"]
     phase1_states = ["california", "texas", "new-york", "florida", "washington"]
-    state_subset = phase1_states[:3]
+    build_cfg = config.get("build", {})
+    state_subset_size = build_cfg.get("state_subset_size")
+    if isinstance(state_subset_size, int) and state_subset_size > 0:
+        state_subset = phase1_states[:state_subset_size]
+    else:
+        state_subset = phase1_states
     bucket_subset = ["65k-80k", "80k-100k"]
     age_subset = phase1_ages
+    max_pages = int(build_cfg.get("max_pages", 50))
 
     rendered_pages = {}
     skipped = []
@@ -292,7 +397,11 @@ def main():
         )
 
         state_str = f" in {state_name}" if state_name else ""
-        meta_title = f"Is ${bucket['mid']:,} a Good Salary at Age {age_band['label']}{state_str}? | BenchmarkSelf"
+        center_percentile = estimate_percentile_for_salary(bucket["mid"], page_data)
+        meta_title = (
+            f"Is ${bucket['mid']:,} a Good Salary at Age {age_band['label']}{state_str}? "
+            f"(Top {center_percentile}%) | BenchmarkSelf"
+        )
         meta_desc = (
             f"Find out where {bucket['label']} ranks for people aged {age_band['label']}{state_str}. "
             f"Median salary for this group is ${page_data['p50']:,}. See your exact percentile instantly — no signup."
@@ -320,9 +429,10 @@ def main():
             "related_pages": related_pages,
             "salary_data_json": salary_data_json,
             "config": config,
-            "dataset_version": config.get("version", "unknown"),
-            "dataset_last_updated": config.get("dataset_last_updated"),
-            "intro_sentence": unique_intro(bucket["mid"]),
+            "dataset_version": data.get("_meta", {}).get("version", config.get("version", "unknown")),
+            "dataset_last_updated": data.get("_meta", {}).get("updated", config.get("dataset_last_updated")),
+            "intro_sentence": unique_intro_for_context(bucket, age_band, state_name),
+            "template_version": template_version,
         }
 
         try:
@@ -331,22 +441,43 @@ def main():
             skipped.append(f"skip {canonical}: {exc}")
             return
 
-        html = minify_html_light(template.render(**ctx))
+        try:
+            html = minify_html_light(template.render(**ctx))
+        except UndefinedError as exc:
+            skipped.append(f"skip {canonical}: StrictUndefined missing variable: {exc}")
+            return
+        except Exception as exc:
+            skipped.append(f"skip {canonical}: template render error: {exc}")
+            return
         rendered_pages[canonical] = html
 
     count = 0
+    limit_hit = False
     for bucket_id in phase1_buckets:
+        if count >= max_pages:
+            limit_hit = True
+            break
         bucket = next(b for b in buckets if b["id"] == bucket_id)
         for age_id in phase1_ages:
+            if count >= max_pages:
+                limit_hit = True
+                break
             age_band = next(b for b in age_bands if b["id"] == age_id)
             queue_page(bucket, age_band)
             count += 1
 
     for state_id in state_subset:
+        if count >= max_pages:
+            limit_hit = True
+            break
         for bucket_id in bucket_subset:
+            if count >= max_pages:
+                limit_hit = True
+                break
             bucket = next(b for b in buckets if b["id"] == bucket_id)
             for age_id in age_subset:
-                if count >= 50:
+                if count >= max_pages:
+                    limit_hit = True
                     break
                 age_band = next(b for b in age_bands if b["id"] == age_id)
                 queue_page(bucket, age_band, state_id)
@@ -354,52 +485,77 @@ def main():
 
     if skipped:
         for msg in skipped:
-            print(f"WARN: {msg}")
+            LOGGER.warning(msg)
+    if limit_hit:
+        LOGGER.info("Global page limit reached (%s pages).", max_pages)
 
     if len(rendered_pages) == 0:
-        print("ERROR: No pages rendered. Stopping build.")
+        LOGGER.error("No pages rendered. Stopping build.")
         raise RuntimeError("Build failed before file writes")
 
     if TMP_OUT_DIR.exists():
         shutil.rmtree(TMP_OUT_DIR)
     TMP_OUT_DIR.mkdir(parents=True, exist_ok=True)
 
+    generated_pages = {}
     for canonical, html in sorted(rendered_pages.items()):
-        write_file(TMP_OUT_DIR, canonical, html)
-        page_index["pages"][canonical] = {"generated_at": datetime.utcnow().isoformat()}
+        if not dry_run:
+            write_file(TMP_OUT_DIR, canonical, html)
+        generated_pages[canonical] = {"generated_at": datetime.utcnow().isoformat()}
 
     crawl_pages = build_crawl_entry_pages(buckets, age_bands, states)
     for canonical, body in crawl_pages.items():
-        write_file(
-            TMP_OUT_DIR,
-            canonical,
-            minify_html_light(f"<!doctype html><html><head><meta charset='utf-8'><title>BenchmarkSelf</title></head><body>{body}</body></html>"),
-        )
+        if not dry_run:
+            write_file(
+                TMP_OUT_DIR,
+                canonical,
+                minify_html_light(f"<!doctype html><html><head><meta charset='utf-8'><title>BenchmarkSelf</title></head><body>{body}</body></html>"),
+            )
 
     root_index = minify_html_light(build_root_index(config, buckets, age_bands, states))
-    write_file(TMP_OUT_DIR, "/index.html", root_index)
-    write_file(TMP_OUT_DIR, "/404.html", build_404_page())
+    if not dry_run:
+        write_file(TMP_OUT_DIR, "/index.html", root_index)
+        write_file(TMP_OUT_DIR, "/404.html", build_404_page())
 
-    domain = normalize_domain(config["domain"])
+    domain = validate_domain(config.get("domain"))
     robots_content = f"User-agent: *\nAllow: /\nSitemap: {domain}/sitemap.xml\n"
-    write_file(TMP_OUT_DIR, "/robots.txt", robots_content)
+    if not dry_run:
+        write_file(TMP_OUT_DIR, "/robots.txt", robots_content)
 
-    existing_paths = list(page_index.get("pages", {}).keys())
-    all_paths = list(rendered_pages.keys()) + list(crawl_pages.keys()) + ["/"] + existing_paths
+    all_paths = list(rendered_pages.keys()) + list(crawl_pages.keys()) + ["/"]
     sitemap_xml = build_sitemap_xml(all_paths, domain)
-    write_file(TMP_OUT_DIR, "/sitemap.xml", sitemap_xml)
+    if not dry_run:
+        write_file(TMP_OUT_DIR, "/sitemap.xml", sitemap_xml)
+        headers = (
+            "# Cloudflare Pages handles Brotli/Gzip compression automatically.\n"
+            "/*\n"
+            "  X-Content-Type-Options: nosniff\n"
+        )
+        write_file(TMP_OUT_DIR, "/_headers", headers)
 
-    if OUT_DIR.exists():
-        shutil.rmtree(OUT_DIR)
-    TMP_OUT_DIR.rename(OUT_DIR)
+    if not dry_run:
+        if OUT_DIR.exists():
+            shutil.rmtree(OUT_DIR)
+        TMP_OUT_DIR.rename(OUT_DIR)
+    elif TMP_OUT_DIR.exists():
+        shutil.rmtree(TMP_OUT_DIR)
 
+    page_index["pages"] = generated_pages
     page_index["config_version"] = config.get("version")
     page_index["last_build"] = datetime.utcnow().isoformat()
-    INDEX_FILE.write_text(json.dumps(page_index, indent=2), encoding="utf-8")
+    if not dry_run:
+        INDEX_FILE.write_text(json.dumps(page_index, indent=2), encoding="utf-8")
 
-    print(f"✓ Generated {len(rendered_pages)} salary pages")
-    print(f"✓ Added {len(crawl_pages)} crawl entry pages + index + 404")
-    print(f"✓ Sitemap contains {len(set(all_paths))} canonical URLs")
+    if not dry_run:
+        sitemap_paths = discover_existing_paths(OUT_DIR)
+        sitemap_xml = build_sitemap_xml([p for p in sitemap_paths if p not in ("/robots.txt", "/sitemap.xml", "/_headers", "/404.html")], domain)
+        write_file(OUT_DIR, "/sitemap.xml", sitemap_xml)
+
+    LOGGER.info("Generated %s salary pages", len(rendered_pages))
+    LOGGER.info("Added %s crawl/entry pages + index + 404", len(crawl_pages))
+    LOGGER.info("Sitemap contains %s canonical URLs", len(set(all_paths)))
+    if dry_run:
+        LOGGER.info("Dry run enabled: no output files were written.")
 
 
 if __name__ == "__main__":
