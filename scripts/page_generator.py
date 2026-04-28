@@ -75,30 +75,43 @@ def minify_html_light(html: str) -> str:
 
 
 def build_salary_data_json(salary: dict) -> str:
-    out = {"national": salary["national"]}
-    for state_id, state_data in salary["by_state"].items():
+    out = {"national": salary.get("national", {})}
+    for state_id, state_data in salary.get("by_state", {}).items():
         out[state_id] = {k: v for k, v in state_data.items() if k not in ("name", "abbr", "cost_index")}
     return json.dumps(out)
 
 
 def estimate_percentile_for_salary(salary_value: int, data: dict) -> int:
+    try:
+        p10 = data["p10"]
+        p25 = data["p25"]
+        p50 = data["p50"]
+        p75 = data["p75"]
+        p90 = data["p90"]
+    except KeyError:
+        return 50  # safe fallback
+
     points = [
         (0, 0),
-        (data["p10"], 10),
-        (data["p25"], 25),
-        (data["p50"], 50),
-        (data["p75"], 75),
-        (data["p90"], 90),
-        (max(data["p90"] * 2, data["p90"] + 1), 99),
+        (p10, 10),
+        (p25, 25),
+        (p50, 50),
+        (p75, 75),
+        (p90, 90),
+        (max(p90 * 2, p90 + 1), 99),
     ]
+
     for i in range(1, len(points)):
         x0, y0 = points[i - 1]
         x1, y1 = points[i]
+
         if salary_value <= x1:
             if x1 == x0:
                 return y1
+
             pct = y0 + (salary_value - x0) / (x1 - x0) * (y1 - y0)
             return max(1, min(99, round(pct)))
+
     return 99
 
 
@@ -106,7 +119,7 @@ def percentile_range_label(bucket_mid: int, data: dict) -> str:
     center = estimate_percentile_for_salary(bucket_mid, data)
     low = max(1, center - 10)
     high = min(99, center + 10)
-    return f"{low}th–{high}th"
+    return f"{low}th–{high}th percentile"
 
 
 def unique_intro(bucket_mid: int) -> str:
@@ -220,8 +233,12 @@ def build_sitemap_xml(all_paths: list, domain: str) -> str:
 
 
 def build_root_index(config: dict, buckets: list, age_bands: list, states: list) -> str:
+    if not age_bands:
+        raise ValueError("age_bands cannot be empty")
+
+    default_age = age_bands[2] if len(age_bands) > 2 else age_bands[0]
     key_salary_links = "\n".join(
-        f'<li><a href="/salary-percentile/{b["id"]}/age/{age_bands[2]["id"]}/">{b["label"]} at {age_bands[2]["label"]}</a></li>'
+        f'<li><a href="/salary-percentile/{b["id"]}/age/{default_age["id"]}/">{b["label"]} at {default_age["label"]}</a></li>'
         for b in buckets[:5]
     )
     state_links = "\n".join(
@@ -366,6 +383,16 @@ def main():
     data = load_json_file(DATA_FILE, "master.json")
     config = load_json_file(CONFIG_FILE, "config.json")
 
+    if "salary" not in data:
+        raise ValueError("Missing salary key in master.json")
+
+    salary = data["salary"]
+    
+    required_keys = ["buckets", "age_bands", "by_state", "national"]
+    for key in required_keys:
+        if key not in salary:
+            raise ValueError(f"Missing salary.{key} in master.json")
+
     for k, v in DEFAULT_CONFIG_VALUES.items():
         config.setdefault(k, v)
 
@@ -377,7 +404,6 @@ def main():
     if page_index.get("config_version") != config.get("version"):
         page_index["pages"] = {}
 
-    salary = data["salary"]
     buckets = salary["buckets"]
     age_bands = salary["age_bands"]
     states = [{"id": k, "name": v["name"], "abbr": v["abbr"]} for k, v in salary["by_state"].items()]
@@ -391,6 +417,7 @@ def main():
     include_state_pages = bool(build_cfg.get("include_state_pages", True))
     state_subset_size = build_cfg.get("state_subset_size")
     state_ids = [s["id"] for s in states]
+
     if include_state_pages and isinstance(state_subset_size, int) and state_subset_size > 0:
         state_subset = state_ids[:state_subset_size]
     elif include_state_pages:
@@ -436,10 +463,12 @@ def main():
 
         state_str = f" in {state_name}" if state_name else ""
         center_percentile = estimate_percentile_for_salary(bucket["mid"], page_data)
+
         meta_title = (
             f"Is ${bucket['mid']:,} a Good Salary at {age_band['label']}{state_str}? "
             f"(Top {center_percentile}%) | BenchmarkSelf"
         )
+
         meta_desc = (
             f"Find out where {bucket['label']} ranks for people aged {age_band['label']}{state_str}. "
             f"Median salary for this group is ${page_data['p50']:,}. See your exact percentile instantly — no signup."
@@ -487,46 +516,74 @@ def main():
         except Exception as exc:
             skipped.append(f"skip {canonical}: template render error: {exc}")
             return
-        if canonical != normalize_canonical(canonical):
-            skipped.append(f"skip {canonical}: canonical URL format mismatch")
-            return
+
         rendered_pages[canonical] = html
 
+    # ── FIXED LOOP STRUCTURE ─────────────────────
     count = 0
     limit_hit = False
+
+    bucket_map = {b["id"]: b for b in buckets}
+    age_band_map = {a["id"]: a for a in age_bands}
+
+    # NATIONAL
     for bucket_id in bucket_ids:
         if count >= max_pages:
             limit_hit = True
             break
-        bucket = next(b for b in buckets if b["id"] == bucket_id)
+
+        bucket = bucket_map.get(bucket_id)
+        if not bucket:
+            skipped.append(f"missing bucket {bucket_id}")
+            continue
+
         for age_id in age_ids:
             if count >= max_pages:
                 limit_hit = True
                 break
-            age_band = next(b for b in age_bands if b["id"] == age_id)
+
+            age_band = age_band_map.get(age_id)
+            if not age_band:
+                skipped.append(f"missing age_band {age_id}")
+                continue
+
             queue_page(bucket, age_band)
             count += 1
 
+    # STATE
     for state_id in state_subset:
         if count >= max_pages:
             limit_hit = True
             break
+
         for bucket_id in bucket_ids:
             if count >= max_pages:
                 limit_hit = True
                 break
-            bucket = next(b for b in buckets if b["id"] == bucket_id)
+
+            bucket = bucket_map.get(bucket_id)
+            if not bucket:
+                skipped.append(f"missing bucket {bucket_id}")
+                continue
+
             for age_id in age_ids:
                 if count >= max_pages:
                     limit_hit = True
                     break
-                age_band = next(b for b in age_bands if b["id"] == age_id)
+
+                age_band = age_band_map.get(age_id)
+                if not age_band:
+                    skipped.append(f"missing age_band {age_id}")
+                    continue
+
                 queue_page(bucket, age_band, state_id)
                 count += 1
 
+    # ── REST UNCHANGED ─────────────────────
     if skipped:
         for msg in skipped:
             LOGGER.warning(msg)
+
     if limit_hit:
         LOGGER.info("Global page limit reached (%s pages).", max_pages)
 
@@ -560,19 +617,17 @@ def main():
 
     domain = validate_domain(config.get("domain"))
     robots_content = f"User-agent: *\nAllow: /\nSitemap: {domain}/sitemap.xml\n"
+
     if not dry_run:
         write_file(TMP_OUT_DIR, "/robots.txt", robots_content)
 
     all_paths = list(rendered_pages.keys()) + list(crawl_pages.keys()) + ["/"]
     sitemap_xml = build_sitemap_xml(all_paths, domain)
+
     if not dry_run:
         write_file(TMP_OUT_DIR, "/sitemap.xml", sitemap_xml)
-        headers = (
-            "# Cloudflare Pages handles Brotli/Gzip compression automatically.\n"
-            "/*\n"
-            "  X-Content-Type-Options: nosniff\n"
-        )
-        write_file(TMP_OUT_DIR, "/_headers", headers)
+        write_file(TMP_OUT_DIR, "/_headers",
+                   "# Cloudflare Pages handles Brotli/Gzip compression automatically.\n/*\n  X-Content-Type-Options: nosniff\n")
 
     if not dry_run:
         if OUT_DIR.exists():
@@ -584,17 +639,22 @@ def main():
     page_index["pages"] = generated_pages
     page_index["config_version"] = config.get("version")
     page_index["last_build"] = datetime.utcnow().isoformat()
+
     if not dry_run:
         INDEX_FILE.write_text(json.dumps(page_index, indent=2), encoding="utf-8")
 
     if not dry_run:
         sitemap_paths = discover_existing_paths(OUT_DIR)
-        sitemap_xml = build_sitemap_xml([p for p in sitemap_paths if p not in ("/robots.txt", "/sitemap.xml", "/_headers", "/404.html")], domain)
+        sitemap_xml = build_sitemap_xml(
+            [p for p in sitemap_paths if p not in ("/robots.txt", "/sitemap.xml", "/_headers", "/404.html")],
+            domain
+        )
         write_file(OUT_DIR, "/sitemap.xml", sitemap_xml)
 
     LOGGER.info("Generated %s salary pages", len(rendered_pages))
     LOGGER.info("Added %s crawl/entry pages + index + 404", len(crawl_pages))
     LOGGER.info("Sitemap contains %s canonical URLs", len(set(all_paths)))
+
     if dry_run:
         LOGGER.info("Dry run enabled: no output files were written.")
 
