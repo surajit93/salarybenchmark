@@ -1,5 +1,6 @@
 # Cloudflare Pages configuration
 # Place this file at repo root.
+# Note: Cloudflare automatically applies Brotli/Gzip compression at the edge.
 # In Cloudflare Pages dashboard:
 #   Build command:     (leave empty — pages are pre-built by GitHub Actions)
 #   Build output dir:  output
