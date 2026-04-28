@@ -1,3 +1,3 @@
 User-agent: *
 Allow: /
-Sitemap: {{ config.domain }}/sitemap.xml
+Sitemap: https://bench.pages.dev/sitemap.xml
