@@ -79,6 +79,7 @@
       display: flex;
       justify-content: center;
       padding: 12px;
+      min-height: 100px;
       background: var(--surface);
       border-bottom: 1px solid var(--border);
     }
@@ -256,6 +257,7 @@
       display: flex;
       justify-content: center;
       margin: 24px 0;
+      min-height: 300px;
     }
 
     /* Context block */
@@ -425,8 +427,8 @@
     {{ bucket_label }} · Age {{ age_band_label }}
   </div>
 
-  <h1>Salary Percentile: <em>{{ bucket_label }}</em><br>Age {{ age_band_label }}{% if state_name %} in {{ state_name }}{% endif %}</h1>
-  <p class="subtitle">See exactly where you rank — no signup, no email required.</p>
+  <h1>Is <em>${{ "{:,}".format(bucket_mid) }}</em> a Good Salary at {{ age_band_label }}{% if state_name %} in {{ state_name }}{% endif %}?</h1>
+  <p class="subtitle">{{ intro_sentence }}</p>
 
   <!-- Calculator -->
   <div class="calculator">
@@ -482,31 +484,31 @@
 
     <div class="stat-row">
       <div class="stat-pill">
-        <strong>${{ "{:,}".format(data.p50) }}</strong>
+        <strong>${{ "{:,}".format(data["p50"]) }}</strong>
         Median Salary
       </div>
       <div class="stat-pill">
-        <strong>${{ "{:,}".format(data.p25) }}</strong>
+        <strong>${{ "{:,}".format(data["p25"]) }}</strong>
         Bottom 25%
       </div>
       <div class="stat-pill">
-        <strong>${{ "{:,}".format(data.p75) }}</strong>
+        <strong>${{ "{:,}".format(data["p75"]) }}</strong>
         Top 25%
       </div>
       <div class="stat-pill">
-        <strong>${{ "{:,}".format(data.p90) }}</strong>
+        <strong>${{ "{:,}".format(data["p90"]) }}</strong>
         Top 10%
       </div>
     </div>
 
     <p>
       For people aged {{ age_band_label }}{% if state_name %} in {{ state_name }}{% endif %},
-      the median annual salary is <strong>${{ "{:,}".format(data.p50) }}</strong>.
+      the median annual salary is <strong>${{ "{:,}".format(data["p50"]) }}</strong>.
       Half of workers in this group earn between
-      <strong>${{ "{:,}".format(data.p25) }}</strong> and
-      <strong>${{ "{:,}".format(data.p75) }}</strong> per year.
+      <strong>${{ "{:,}".format(data["p25"]) }}</strong> and
+      <strong>${{ "{:,}".format(data["p75"]) }}</strong> per year.
       The top 10% of earners in this group make above
-      <strong>${{ "{:,}".format(data.p90) }}</strong>.
+      <strong>${{ "{:,}".format(data["p90"]) }}</strong>.
     </p>
 
     <p>
@@ -524,6 +526,13 @@
       in {{ state_name }} compared to lower cost-of-living states.
     </p>
     {% endif %}
+  </div>
+
+  <div class="context-block">
+    <h2>Data freshness</h2>
+    <p>Dataset version: <strong>{{ dataset_version }}</strong></p>
+    <p>Last updated: <strong>{{ dataset_last_updated }}</strong></p>
+    <p><strong>Bookmark this page</strong> to quickly re-check your percentile later.</p>
   </div>
 
   <!-- Next Steps: Internal Loop -->
@@ -669,7 +678,30 @@ window.addEventListener('DOMContentLoaded', function() {
 </script>
 
 {% if config.tracking.enabled %}
-<script>(function() { try { let uid = localStorage.getItem("uid"); if (!uid) { uid = crypto.randomUUID(); localStorage.setItem("uid", uid); } const payload = { uid: uid, path: window.location.pathname, referrer: document.referrer || null, timestamp: new Date().toISOString(), userAgent: navigator.userAgent }; fetch("{{ config.tracking.endpoint }}", { method: "POST", body: JSON.stringify(payload), keepalive: true }); } catch (e) {}})();</script>
+<script>
+// Worker must handle: geo (country/state/city) and storage (KV/R2).
+(function () {
+  try {
+    let uid = localStorage.getItem('uid');
+    if (!uid) {
+      uid = (crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now());
+      localStorage.setItem('uid', uid);
+    }
+    const payload = {
+      uid: uid,
+      path: window.location.pathname,
+      timestamp: new Date().toISOString(),
+      referrer: document.referrer || null
+    };
+    fetch('{{ config.tracking.endpoint }}', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload),
+      keepalive: true
+    }).catch(function () {});
+  } catch (e) {}
+})();
+</script>
 {% endif %}
 
 </body>

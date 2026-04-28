@@ -16,5 +16,7 @@
   "tracking": {
     "enabled": true,
     "endpoint": "/track"
-  }
+  },
+  "dataset_last_updated": "2023-12-31",
+  "homepage_intro": "Compare your salary, savings, and net worth anonymously."
 }
