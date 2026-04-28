@@ -1,0 +1,20 @@
+{
+  "domain": "https://bench.pages.dev",
+  "adsense": {
+    "enabled": true,
+    "client": "ca-pub-REPLACE_ME",
+    "slots": {
+      "leaderboard": "1111111111",
+      "inline": "2222222222"
+    }
+  },
+  "site": {
+    "name": "BenchmarkSelf",
+    "tagline": "See where you stand financially"
+  },
+  "version": "1.0",
+  "tracking": {
+    "enabled": true,
+    "endpoint": "/track"
+  }
+}

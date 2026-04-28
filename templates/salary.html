@@ -6,12 +6,12 @@
   <title>{{ meta_title }}</title>
   <meta name="description" content="{{ meta_description }}">
   <meta name="robots" content="index, follow">
-  <link rel="canonical" href="https://benchmarkself.dev{{ canonical_url }}">
+  <link rel="canonical" href="{{ config.domain }}{{ canonical_url }}">
 
   <!-- Open Graph -->
   <meta property="og:title" content="{{ meta_title }}">
   <meta property="og:description" content="{{ meta_description }}">
-  <meta property="og:url" content="https://benchmarkself.dev{{ canonical_url }}">
+  <meta property="og:url" content="{{ config.domain }}{{ canonical_url }}">
   <meta property="og:type" content="website">
 
   <!-- Google Fonts -->
@@ -19,7 +19,9 @@
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 
   <!-- AdSense -->
-  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-XXXXXXXXXXXXXXXX" crossorigin="anonymous"></script>
+  {% if config.adsense.enabled %}
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client={{ config.adsense.client }}" crossorigin="anonymous"></script>
+  {% endif %}
 
   <style>
     :root {
@@ -103,7 +105,7 @@
       font-weight: 800;
       line-height: 1.2;
       margin-bottom: 12px;
-      color: #fff;
+      color: #111827;
     }
 
     h1 em {
@@ -404,20 +406,22 @@
 </nav>
 
 <!-- Ad Unit 1: Leaderboard (728×90) -->
+{% if config.adsense.enabled %}
 <div class="ad-leaderboard">
   <ins class="adsbygoogle"
        style="display:inline-block;width:728px;height:90px"
-       data-ad-client="ca-pub-XXXXXXXXXXXXXXXX"
-       data-ad-slot="1111111111"></ins>
+       data-ad-client="{{ config.adsense.client }}"
+       data-ad-slot="{{ config.adsense.slots.leaderboard }}"></ins>
   <script>(adsbygoogle = window.adsbygoogle || []).push({});</script>
 </div>
+{% endif %}
 
 <div class="hero">
 
   <div class="breadcrumb">
     <a href="/">Home</a><span>›</span>
     <a href="/salary-percentile/">Salary Percentile</a><span>›</span>
-    {% if state_name %}<a href="/salary-percentile/age/{{ age_band_id }}/state/{{ state_id }}/">{{ state_name }}</a><span>›</span>{% endif %}
+    {% if state_name %}<a href="/salary-percentile/{{ bucket_id }}/age/{{ age_band_id }}/state/{{ state_id }}/">{{ state_name }}</a><span>›</span>{% endif %}
     {{ bucket_label }} · Age {{ age_band_label }}
   </div>
 
@@ -453,22 +457,24 @@
   </div>
 
   <!-- Result Block -->
-  <div class="result-block" id="result-block">
+  <div class="result-block visible" id="result-block">
     <div class="percentile-number" id="percentile-display">—</div>
     <div class="percentile-label">Percentile</div>
-    <div class="result-sentence" id="result-sentence"></div>
+    <div class="result-sentence" id="result-sentence">People earning {{ bucket_label }} aged {{ age_band_label }}{% if state_name %} in {{ state_name }}{% endif %} typically fall within the {{ percentile_range }} percentile range.</div>
 
     <div class="dist-chart" id="dist-chart"></div>
   </div>
 
   <!-- Ad Unit 2: In-content (336×280) — highest RPM placement -->
+  {% if config.adsense.enabled %}
   <div class="ad-inline">
     <ins class="adsbygoogle"
          style="display:block;width:336px;height:280px"
-         data-ad-client="ca-pub-XXXXXXXXXXXXXXXX"
-         data-ad-slot="2222222222"></ins>
+         data-ad-client="{{ config.adsense.client }}"
+         data-ad-slot="{{ config.adsense.slots.inline }}"></ins>
     <script>(adsbygoogle = window.adsbygoogle || []).push({});</script>
   </div>
+  {% endif %}
 
   <!-- Context Block -->
   <div class="context-block">
@@ -509,7 +515,7 @@
       and employer. Use these figures as a benchmark, not a guarantee.
     </p>
 
-    {% if state_name %}
+    {% if state_name and cost_index %}
     <p>
       {{ state_name }} has a cost-of-living index of approximately
       <strong>{{ "%.2f"|format(cost_index) }}x</strong> the national average.
@@ -544,7 +550,7 @@
 
     <a href="/emergency-fund-calculator/" class="next-link">
       <span class="icon">🛡️</span>
-      How many months can you survive without income?
+      Emergency Fund Coverage Check
       <span class="arrow">→</span>
     </a>
 
@@ -564,6 +570,7 @@
   </div>
 
   <!-- Related Pages -->
+  {% if related_pages and related_pages|length > 0 %}
   <h2 style="font-family:'Syne',sans-serif;font-size:1rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:14px;">Related Benchmarks</h2>
   <div class="related-grid">
     {% for link in related_pages %}
@@ -573,6 +580,7 @@
     </a>
     {% endfor %}
   </div>
+  {% endif %}
 
 </div><!-- /hero -->
 
@@ -652,9 +660,6 @@ function calculate() {
   document.getElementById('dist-chart').innerHTML = html;
   document.getElementById('result-block').classList.add('visible');
 
-  // Update URL without reload (for indexable result pages via pre-rendering)
-  const newUrl = `/salary-percentile/${Math.floor(salary/1000)*1000}-${Math.ceil(salary/1000)*1000+1}/age/${age}/${state !== 'national' ? 'state/' + state + '/' : ''}`;
-  window.history.replaceState({}, '', newUrl);
 }
 
 // Auto-calculate on load if pre-filled
@@ -662,6 +667,10 @@ window.addEventListener('DOMContentLoaded', function() {
   if (document.getElementById('salary-input').value) calculate();
 });
 </script>
+
+{% if config.tracking.enabled %}
+<script>(function() { try { let uid = localStorage.getItem("uid"); if (!uid) { uid = crypto.randomUUID(); localStorage.setItem("uid", uid); } const payload = { uid: uid, path: window.location.pathname, referrer: document.referrer || null, timestamp: new Date().toISOString(), userAgent: navigator.userAgent }; fetch("{{ config.tracking.endpoint }}", { method: "POST", body: JSON.stringify(payload), keepalive: true }); } catch (e) {}})();</script>
+{% endif %}
 
 </body>
 </html>
