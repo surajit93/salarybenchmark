@@ -483,8 +483,7 @@ def main():
         try:
             html = minify_html_light(template.render(**ctx))
         except UndefinedError as exc:
-            skipped.append(f"skip {canonical}: StrictUndefined missing variable: {exc}")
-            return
+            raise RuntimeError(f"Template rendering failed: {exc}")
         except Exception as exc:
             skipped.append(f"skip {canonical}: template render error: {exc}")
             return
