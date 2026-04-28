@@ -29,7 +29,8 @@ DEFAULT_CONFIG_VALUES = {
     "dataset_last_updated": "2023-12-31",
     "homepage_intro": "Compare your salary, savings, and net worth anonymously.",
     "build": {
-        "max_pages": 50,
+        "max_pages": 5000,
+        "include_state_pages": True,
         "state_subset_size": None,
     },
 }
@@ -188,6 +189,22 @@ def validate_template_context(ctx: dict):
         raise ValueError(f"Missing template fields: {missing}; missing data fields: {data_missing}")
 
 
+def validate_page_data(page_data: dict, bucket: dict, age_band: dict, state_id: str | None = None) -> tuple[bool, str]:
+    if not bucket.get("label"):
+        return False, "bucket_label missing"
+    if not age_band.get("label"):
+        return False, "age_band missing"
+    missing = [k for k in REQUIRED_DATA_FIELDS if k not in page_data]
+    if missing:
+        return False, f"missing percentile fields: {', '.join(missing)}"
+    return True, ""
+
+
+def expected_output_relative(canonical: str) -> str:
+    norm = normalize_canonical(canonical)
+    return "index.html" if norm == "/" else f"{norm.strip('/')}/index.html"
+
+
 def build_sitemap_xml(all_paths: list, domain: str) -> str:
     lines = [
         '<?xml version="1.0" encoding="UTF-8"?>',
@@ -258,10 +275,21 @@ def build_crawl_entry_pages(buckets: list, age_bands: list, states: list):
         "on one national number. You can also compare your state view against national data to decide whether your compensation is keeping pace.</p>"
         "<p>Prefer browsing by life stage first? Start with <a href='/salary-by-age/'>salary by age</a> and then refine by state.</p>"
     )
+    best_ranges_intro = (
+        "<h1>Best Salary Ranges</h1>"
+        "<p>There is no one universal “best” salary, but some ranges tend to offer a stronger balance between purchasing power and percentile rank "
+        "for a wide set of age groups. This guide helps you compare major salary bands and quickly branch into the exact percentile pages for your "
+        "age and state. If your compensation is below your target band, use these pages to estimate the next step that meaningfully improves your rank. "
+        "If your salary is already in a higher band, the same pages help you track progress against top-quartile and top-decile thresholds rather than "
+        "guessing from national averages alone. Start with your closest bracket, then check nearby ranges to understand how much additional income is "
+        "typically needed to move up in percentile terms for your stage of career.</p>"
+        "<p>For a location-first comparison, review <a href='/salary-by-state/'>salary by state</a>. For life-stage trends, start at "
+        "<a href='/salary-by-age/'>salary by age</a>.</p>"
+    )
     return {
         "/salary-by-age/": f"{by_age_intro}<ul>{age_links}</ul>",
         "/salary-by-state/": f"{by_state_intro}<ul>{state_links}</ul>",
-        "/best-salary-ranges/": f"<h1>Best Salary Ranges</h1><p>Explore salary ranges and where they rank.</p><ul>{bucket_links}</ul>",
+        "/best-salary-ranges/": f"{best_ranges_intro}<ul>{bucket_links}</ul>",
         "/is-75000-good-salary/": (
             "<h1>Is $75,000 a Good Salary?</h1>"
             "<p>A $75,000 salary typically sits around the upper-middle range for many working-age groups, but the exact percentile depends "
@@ -299,7 +327,9 @@ def build_crawl_entry_pages(buckets: list, age_bands: list, states: list):
 def build_404_page() -> str:
     return (
         "<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
-        "<title>Page Not Found</title></head><body><h1>404 — Page not found</h1>"
+        "<title>Page Not Found</title></head><body>"
+        "<nav><a href='/'>Home</a> · <a href='/salary-by-age/'>Salary by age</a> · <a href='/salary-by-state/'>Salary by state</a></nav>"
+        "<h1>404 — Page not found</h1>"
         "<p>The page you requested does not exist.</p><p><a href='/'>Return to homepage</a></p></body></html>\n"
     )
 
@@ -357,21 +387,24 @@ def main():
     salary_data_json = build_salary_data_json(salary)
     template_version = hashlib.sha256((TMPL_DIR / "salary.html").read_bytes()).hexdigest()[:12]
 
-    phase1_buckets = ["50k-65k", "65k-80k", "80k-100k", "100k-130k", "40k-50k"]
-    phase1_ages = ["26-30", "31-35", "36-40", "41-45"]
-    phase1_states = ["california", "texas", "new-york", "florida", "washington"]
     build_cfg = config.get("build", {})
+    include_state_pages = bool(build_cfg.get("include_state_pages", True))
     state_subset_size = build_cfg.get("state_subset_size")
-    if isinstance(state_subset_size, int) and state_subset_size > 0:
-        state_subset = phase1_states[:state_subset_size]
+    state_ids = [s["id"] for s in states]
+    if include_state_pages and isinstance(state_subset_size, int) and state_subset_size > 0:
+        state_subset = state_ids[:state_subset_size]
+    elif include_state_pages:
+        state_subset = state_ids
     else:
-        state_subset = phase1_states
-    bucket_subset = ["65k-80k", "80k-100k"]
-    age_subset = phase1_ages
-    max_pages = int(build_cfg.get("max_pages", 50))
+        state_subset = []
+
+    bucket_ids = [b["id"] for b in buckets]
+    age_ids = [a["id"] for a in age_bands]
+    max_pages = int(build_cfg.get("max_pages", DEFAULT_CONFIG_VALUES["build"]["max_pages"]))
 
     rendered_pages = {}
     skipped = []
+    build_timestamp = datetime.utcnow().isoformat()
 
     def queue_page(bucket: dict, age_band: dict, state_id=None):
         state_obj = salary["by_state"].get(state_id) if state_id else None
@@ -396,10 +429,15 @@ def main():
             else f"/salary-percentile/{bucket['id']}/age/{age_band['id']}/"
         )
 
+        is_valid, reason = validate_page_data(page_data, bucket, age_band, state_id)
+        if not is_valid:
+            skipped.append(f"skip {bucket['id']} {age_band['id']} {state_id or 'national'}: {reason}")
+            return
+
         state_str = f" in {state_name}" if state_name else ""
         center_percentile = estimate_percentile_for_salary(bucket["mid"], page_data)
         meta_title = (
-            f"Is ${bucket['mid']:,} a Good Salary at Age {age_band['label']}{state_str}? "
+            f"Is ${bucket['mid']:,} a Good Salary at {age_band['label']}{state_str}? "
             f"(Top {center_percentile}%) | BenchmarkSelf"
         )
         meta_desc = (
@@ -431,6 +469,7 @@ def main():
             "config": config,
             "dataset_version": data.get("_meta", {}).get("version", config.get("version", "unknown")),
             "dataset_last_updated": data.get("_meta", {}).get("updated", config.get("dataset_last_updated")),
+            "build_timestamp": build_timestamp,
             "intro_sentence": unique_intro_for_context(bucket, age_band, state_name),
             "template_version": template_version,
         }
@@ -449,16 +488,19 @@ def main():
         except Exception as exc:
             skipped.append(f"skip {canonical}: template render error: {exc}")
             return
+        if canonical != normalize_canonical(canonical):
+            skipped.append(f"skip {canonical}: canonical URL format mismatch")
+            return
         rendered_pages[canonical] = html
 
     count = 0
     limit_hit = False
-    for bucket_id in phase1_buckets:
+    for bucket_id in bucket_ids:
         if count >= max_pages:
             limit_hit = True
             break
         bucket = next(b for b in buckets if b["id"] == bucket_id)
-        for age_id in phase1_ages:
+        for age_id in age_ids:
             if count >= max_pages:
                 limit_hit = True
                 break
@@ -470,12 +512,12 @@ def main():
         if count >= max_pages:
             limit_hit = True
             break
-        for bucket_id in bucket_subset:
+        for bucket_id in bucket_ids:
             if count >= max_pages:
                 limit_hit = True
                 break
             bucket = next(b for b in buckets if b["id"] == bucket_id)
-            for age_id in age_subset:
+            for age_id in age_ids:
                 if count >= max_pages:
                     limit_hit = True
                     break
@@ -501,7 +543,7 @@ def main():
     for canonical, html in sorted(rendered_pages.items()):
         if not dry_run:
             write_file(TMP_OUT_DIR, canonical, html)
-        generated_pages[canonical] = {"generated_at": datetime.utcnow().isoformat()}
+        generated_pages[canonical] = {"generated_at": build_timestamp}
 
     crawl_pages = build_crawl_entry_pages(buckets, age_bands, states)
     for canonical, body in crawl_pages.items():

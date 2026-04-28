@@ -20,7 +20,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 
   <!-- AdSense -->
-  {% if config.adsense.enabled %}
+  {% if config.adsense.enabled and config.adsense.client %}
   <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client={{ config.adsense.client }}" crossorigin="anonymous"></script>
   {% endif %}
 
@@ -409,7 +409,7 @@
 </nav>
 
 <!-- Ad Unit 1: Leaderboard (728×90) -->
-{% if config.adsense.enabled %}
+{% if config.adsense.enabled and config.adsense.client and config.adsense.slots and config.adsense.slots.leaderboard %}
 <div class="ad-leaderboard">
   <ins class="adsbygoogle"
        style="display:inline-block;width:728px;height:90px"
@@ -469,7 +469,7 @@
   </div>
 
   <!-- Ad Unit 2: In-content (336×280) — highest RPM placement -->
-  {% if config.adsense.enabled %}
+  {% if config.adsense.enabled and config.adsense.client and config.adsense.slots and config.adsense.slots.inline %}
   <div class="ad-inline">
     <ins class="adsbygoogle"
          style="display:block;width:336px;height:280px"
@@ -533,6 +533,7 @@
     <h2>Data freshness</h2>
     <p>Dataset version: <strong>{{ dataset_version }}</strong></p>
     <p>Last updated: <strong>{{ dataset_last_updated }}</strong></p>
+    <p>Build timestamp: <strong>{{ build_timestamp }}</strong></p>
     <p><strong>Bookmark this page</strong> to quickly re-check your percentile later.</p>
   </div>
 
@@ -548,7 +549,7 @@
 
     <a href="/salary-by-state/" class="next-link">
       <span class="icon">🧭</span>
-      Compare with another state
+      Compare another state
       <span class="arrow">→</span>
     </a>
 
@@ -721,15 +722,21 @@ window.addEventListener('DOMContentLoaded', function() {
       uid: uid,
       path: String(window.location.pathname || '/').slice(0, 200),
       timestamp: new Date().toISOString(),
+      userAgent: String(navigator.userAgent || '').slice(0, 300),
       referrer: sanitizeReferrer(document.referrer || null)
     };
     const body = JSON.stringify(payload).slice(0, 1024);
-    fetch('{{ config.tracking.endpoint }}', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: body,
-      keepalive: true
-    }).catch(function () {});
+    if (navigator.sendBeacon) {
+      const blob = new Blob([body], {type: 'application/json'});
+      navigator.sendBeacon('{{ config.tracking.endpoint }}', blob);
+    } else {
+      fetch('{{ config.tracking.endpoint }}', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: body,
+        keepalive: true
+      }).catch(function () {});
+    }
   } catch (e) {}
 })();
 </script>

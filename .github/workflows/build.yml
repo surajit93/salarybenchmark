@@ -44,11 +44,21 @@ jobs:
       - name: Verify output
         run: |
           echo "── Output summary ──────────────────"
-          find output -name "index.html" | wc -l | xargs echo "Pages generated:"
-          echo "Sitemap entries:"
-          grep -c "<url>" output/sitemap.xml || echo "0"
+          PAGE_COUNT=$(find output -name "index.html" | wc -l)
+          SITEMAP_COUNT=$(grep -c "<url>" output/sitemap.xml || echo "0")
+          echo "Pages generated: ${PAGE_COUNT}"
+          echo "Sitemap entries: ${SITEMAP_COUNT}"
           echo "Sample pages:"
           find output -name "index.html" | head -5
+          MIN_PAGES=20
+          if [ "${PAGE_COUNT}" -lt "${MIN_PAGES}" ]; then
+            echo "ERROR: Expected at least ${MIN_PAGES} pages, found ${PAGE_COUNT}"
+            exit 1
+          fi
+          if [ "${SITEMAP_COUNT}" -le 0 ]; then
+            echo "ERROR: Sitemap is empty"
+            exit 1
+          fi
 
       - name: Commit generated pages
         run: |
